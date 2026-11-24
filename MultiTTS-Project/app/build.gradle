@@ -112,7 +112,12 @@ tasks.withType(JavaCompile).configureEach {
 //   actually defines class org.nobody.multitts.ui.setting.a
 // 注意 fsutil 只能在【空目录】上设置该属性，且新子目录会自动继承。
 // 这里在 javac 执行前把「输出类目录」检查/修复一遍，保证 clean 后仍可构建。
+// 【CI 修复 2026-11-24】Linux/macOS 文件系统天然区分大小写，
+// 无需也无法调用 fsutil.exe；原钩子在 Linux 上会直接抛
+// IOException: Cannot run program "fsutil.exe"，导致 GitHub Actions 编译中断。
+def isWindowsFs = System.getProperty('os.name').toLowerCase().contains('windows')
 def ensureCaseSensitiveDir = { File dir ->
+    if (!isWindowsFs) return
     if (!dir.exists()) dir.mkdirs()
     if (!dir.isDirectory()) return
     def probe = new ProcessBuilder('fsutil.exe', 'file', 'queryCaseSensitiveInfo', dir.absolutePath)
