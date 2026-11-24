@@ -1,0 +1,67 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'MultiTTS-Project/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Ensure Android SDK 35
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.1" >/dev/null 2>&1 || true
+
+      - name: Build APK
+        working-directory: MultiTTS-Project
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Lock asset name
+        run: |
+          APK="$(find MultiTTS-Project/app/build/outputs/apk -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          cp "$APK" MultiTTS-1.8.3.apk
+          ls -lh MultiTTS-1.8.3.apk
+          sha256sum MultiTTS-1.8.3.apk
+
+      - name: Publish to fixed Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=v1.8.3
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" MultiTTS-1.8.3.apk --clobber
+          else
+            gh release create "$TAG" MultiTTS-1.8.3.apk \
+              --title "MultiTTS 1.8.3 逆向修复版" \
+              --notes "GitHub Actions 自动构建 | 包名 org.nobody.multitts | 资产名固定 MultiTTS-1.8.3.apk"
+          fi
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[].name)'
